@@ -1,0 +1,40 @@
+/* Дополнительные стили */
+.lamp-status-on {
+    color: #4CAF50;
+}
+
+.lamp-status-off {
+    color: #f44336;
+}
+
+.lamp-status-fault {
+    color: #ff9800;
+}
+
+.drone-status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.drone-status-idle {
+    background-color: #4CAF50;
+}
+
+.drone-status-flying {
+    background-color: #2196F3;
+    animation: blink 1s infinite;
+}
+
+.drone-status-replacing {
+    background-color: #ff9800;
+    animation: blink 0.5s infinite;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0.5;
+    }
+}
