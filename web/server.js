@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
 
@@ -9,7 +9,6 @@ const wss = new WebSocket.Server({ server });
 app.use(express.static('public'));
 app.use('/models', express.static('models'));
 
-// Состояние ламп
 const lamps = [
     { id: 1, lat: 55.751244, lng: 37.618423, status: 'on', temperature: 25, needsReplacement: false },
     { id: 2, lat: 55.752244, lng: 37.619423, status: 'off', temperature: 18, needsReplacement: true },
@@ -17,23 +16,20 @@ const lamps = [
     { id: 4, lat: 55.754244, lng: 37.621423, status: 'fault', temperature: 45, needsReplacement: true },
 ];
 
-// Текущие задачи на замену
 let replacementTasks = [];
-let droneStatus = 'idle'; // idle, flying, replacing, returning
+let droneStatus = 'idle';
+let activeTargetLampId = null;
 
 wss.on('connection', (ws) => {
     console.log('Client connected');
 
-    // Отправляем начальное состояние
     ws.send(JSON.stringify({
         type: 'initial',
-        data: { lamps, replacementTasks, droneStatus }
+        data: { lamps, replacementTasks, droneStatus, activeTargetLampId }
     }));
 
-    // Симуляция обновлений
-    const interval = setInterval(()  => {
-        // Обновляем температуру ламп
-        lamps.forEach(lamp => {
+    const interval = setInterval(() => {
+        lamps.forEach((lamp) => {
             if (lamp.status === 'on') {
                 lamp.temperature += Math.random() * 2 - 1;
                 lamp.temperature = Math.max(20, Math.min(60, lamp.temperature));
@@ -42,19 +38,27 @@ wss.on('connection', (ws) => {
 
         ws.send(JSON.stringify({
             type: 'update',
-            data: { lamps, droneStatus }
+            data: { lamps, replacementTasks, droneStatus, activeTargetLampId }
         }));
     }, 5000);
 
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
+        let data;
+        try {
+            data = JSON.parse(message);
+        } catch (err) {
+            return;
+        }
 
-        switch(data.type) {
+        switch (data.type) {
             case 'startReplacement':
-                startReplacement(data.lampId);
+                startReplacement(Number(data.lampId));
                 break;
             case 'cancelReplacement':
-                cancelReplacement(data.taskId);
+                cancelReplacement(Number(data.taskId));
+                break;
+            case 'setLampFault':
+                setLampFault(Number(data.lampId), data.status);
                 break;
             case 'updateDronePosition':
                 updateDronePosition(data.position);
@@ -69,67 +73,89 @@ wss.on('connection', (ws) => {
 });
 
 function startReplacement(lampId) {
-    const lamp = lamps.find(l => l.id === lampId);
+    const lamp = lamps.find((item) => item.id === lampId);
     if (!lamp) return;
+    if (droneStatus !== 'idle') return;
 
     const task = {
         id: Date.now(),
-        lampId: lampId,
-        status: 'pending',
+        lampId,
+        status: 'flying',
         startedAt: new Date().toISOString(),
-        estimatedTime: 5 // минут
+        estimatedTime: 5
     };
 
     replacementTasks.push(task);
+    activeTargetLampId = lampId;
     lamp.needsReplacement = false;
-
-    // Симуляция работы дрона
     droneStatus = 'flying';
+    broadcastUpdate();
 
     setTimeout(() => {
         droneStatus = 'replacing';
+        task.status = 'replacing';
+        broadcastUpdate();
 
         setTimeout(() => {
-            // Замена выполнена
             lamp.status = 'on';
             lamp.temperature = 25;
+            lamp.needsReplacement = false;
             task.status = 'completed';
             task.completedAt = new Date().toISOString();
+
             droneStatus = 'returning';
+            broadcastUpdate();
 
             setTimeout(() => {
                 droneStatus = 'idle';
+                activeTargetLampId = null;
+                broadcastUpdate();
             }, 2000);
-
         }, 5000);
     }, 3000);
+}
+
+function setLampFault(lampId, requestedStatus) {
+    const lamp = lamps.find((item) => item.id === lampId);
+    if (!lamp) return;
+
+    const status = requestedStatus === 'off' ? 'off' : 'fault';
+    lamp.status = status;
+    lamp.needsReplacement = true;
+
+    if (status === 'fault') {
+        lamp.temperature = Math.max(lamp.temperature, 45);
+    }
 
     broadcastUpdate();
 }
 
 function cancelReplacement(taskId) {
-    replacementTasks = replacementTasks.filter(t => t.id !== taskId);
+    replacementTasks = replacementTasks.filter((task) => task.id !== taskId);
     droneStatus = 'returning';
+    activeTargetLampId = null;
 
     setTimeout(() => {
         droneStatus = 'idle';
+        broadcastUpdate();
     }, 2000);
 
     broadcastUpdate();
 }
 
 function updateDronePosition(position) {
-    // Обновление позиции дрона для анимации
     broadcastUpdate();
 }
 
 function broadcastUpdate() {
-    wss.clients.forEach(client => {
+    const payload = JSON.stringify({
+        type: 'update',
+        data: { lamps, replacementTasks, droneStatus, activeTargetLampId }
+    });
+
+    wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-                type: 'update',
-                data: { lamps, replacementTasks, droneStatus }
-            }));
+            client.send(payload);
         }
     });
 }

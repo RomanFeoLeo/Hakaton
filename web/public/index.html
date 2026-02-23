@@ -1,26 +1,96 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Управление заменой уличных ламп дронами</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
     <style>
+        :root {
+            --tabs-height: 52px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
             overflow: hidden;
-            font-family: 'Arial', sans-serif;
+            font-family: Arial, sans-serif;
+            background: #11161d;
+            color: #ffffff;
+        }
+
+        #tabs-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: var(--tabs-height);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: rgba(9, 14, 21, 0.94);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+            z-index: 3000;
+        }
+
+        .tab-button {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .tab-button.active {
+            background: #2e8b57;
+            border-color: #2e8b57;
+        }
+
+        .tab-content {
+            position: fixed;
+            top: var(--tabs-height);
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        #tab-3d {
+            background: #0e141a;
+        }
+
+        #three-container {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
         }
 
         #info-panel {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.72);
             color: white;
             padding: 15px;
             border-radius: 8px;
-            z-index: 1000;
+            z-index: 1200;
             pointer-events: none;
+            min-width: 210px;
+        }
+
+        #info-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 17px;
         }
 
         .lamp-label {
@@ -41,6 +111,7 @@
 
         #control-panel {
             pointer-events: all;
+            z-index: 1300;
         }
 
         #control-panel button {
@@ -52,20 +123,208 @@
         }
 
         #control-panel button:hover {
-            opacity: 0.8;
+            opacity: 0.85;
+        }
+
+        #tab-map {
+            background: #d8dee4;
+        }
+
+        #map-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #map-leftbar,
+        #map-sidebar {
+            position: absolute;
+            top: 16px;
+            width: 280px;
+            padding: 16px;
+            background: rgba(240, 248, 255, 0.95);
+            color: #1a1f29;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            z-index: 1300;
+            pointer-events: all;
+        }
+
+        #map-leftbar {
+            left: 16px;
+            max-height: calc(100% - 32px);
+            overflow-y: auto;
+        }
+
+        #map-sidebar {
+            right: 16px;
+            display: block;
+        }
+
+        #map-leftbar h3,
+        #map-sidebar h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+
+        #map-status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .map-task {
+            background: rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(26, 31, 41, 0.12);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .map-task-status {
+            display: inline-block;
+            margin-left: 6px;
+            font-weight: 600;
+        }
+
+        .map-btn {
+            width: 100%;
+            margin-top: 8px;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 10px;
+            color: #ffffff;
+            background: #4b87d9;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .map-btn:hover {
+            background: #3b74c2;
+        }
+
+        .map-btn:disabled {
+            background: #9ca6b8;
+            cursor: default;
+        }
+
+        .map-input {
+            width: 100%;
+            margin-top: 4px;
+            padding: 8px 9px;
+            border-radius: 8px;
+            border: 1px solid rgba(26, 31, 41, 0.2);
+            background: #ffffff;
+            color: #1a1f29;
+        }
+
+        .map-field {
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        #map-drone-status {
+            font-size: 13px;
+            margin-bottom: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(26, 31, 41, 0.12);
+        }
+
+        #map-selected-info {
+            margin-top: 12px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.66);
+            font-size: 12px;
+            line-height: 1.4;
+            border: 1px solid rgba(26, 31, 41, 0.1);
         }
     </style>
 </head>
 <body>
-<div id="info-panel">
-    <h3>Статистика системы</h3>
-    <div id="stats">
-        <div>Всего ламп: <span id="total-lamps">0</span></div>
-        <div>Активных: <span id="active-lamps">0</span></div>
-        <div>Требуют замены: <span id="fault-lamps">0</span></div>
-        <div>Температура воздуха: <span id="air-temp">+22°C</span></div>
-    </div>
+<div id="tabs-bar">
+    <button class="tab-button active" data-tab="tab-3d">3D анимация</button>
+    <button class="tab-button" data-tab="tab-map">Карта</button>
 </div>
+
+<section id="tab-3d" class="tab-content active">
+    <div id="three-container"></div>
+    <div id="info-panel">
+        <h3>Статистика системы</h3>
+        <div id="stats">
+            <div>Всего ламп: <span id="total-lamps">0</span></div>
+            <div>Активных: <span id="active-lamps">0</span></div>
+            <div>Требуют замены: <span id="fault-lamps">0</span></div>
+            <div>Температура воздуха: <span id="air-temp">+22°C</span></div>
+        </div>
+    </div>
+</section>
+
+<section id="tab-map" class="tab-content">
+    <div id="map-canvas"></div>
+
+    <div id="map-leftbar">
+        <h3>Задачи замены</h3>
+        <div id="map-drone-status">Статус дрона: idle</div>
+        <div id="map-task-list"></div>
+    </div>
+
+    <div id="map-sidebar">
+        <h3>Пульт карты</h3>
+
+        <div class="map-field">
+            <label for="map-broken-select">Какая лампа сломана</label>
+            <select id="map-broken-select" class="map-input"></select>
+        </div>
+        <button id="map-mark-broken-btn" class="map-btn">Отметить как сломанную</button>
+
+        <div class="map-field" style="margin-top: 12px;">
+            <label for="map-replace-select">Какую лампу менять</label>
+            <select id="map-replace-select" class="map-input"></select>
+        </div>
+        <button id="map-schedule-btn" class="map-btn">Запланировать замену</button>
+        <button id="map-start-btn" class="map-btn">Запустить замену</button>
+
+        <div id="map-selected-info">
+            Кликните по фонарю на карте, чтобы быстро выбрать его в списках.
+        </div>
+    </div>
+</section>
+
+<script>
+    (function () {
+        const buttons = Array.from(document.querySelectorAll('.tab-button'));
+        const tabs = Array.from(document.querySelectorAll('.tab-content'));
+
+        function activateTab(tabId) {
+            tabs.forEach((tab) => {
+                tab.classList.toggle('active', tab.id === tabId);
+            });
+
+            buttons.forEach((button) => {
+                button.classList.toggle('active', button.dataset.tab === tabId);
+            });
+
+            if (tabId === 'tab-map' && window.__mapTabApi && typeof window.__mapTabApi.onShow === 'function') {
+                window.__mapTabApi.onShow();
+            }
+
+            if (tabId === 'tab-3d') {
+                window.dispatchEvent(new Event('resize'));
+            }
+        }
+
+        buttons.forEach((button) => {
+            button.addEventListener('click', () => activateTab(button.dataset.tab));
+        });
+    })();
+</script>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="/js/map-tab.js"></script>
 
 <script type="importmap">
     {
